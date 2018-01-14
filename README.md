@@ -1,2 +1,2 @@
 # cuda-bfs
-Implementation of bfs algorithms in cuda language.
+Implementation of bfsVertexCentric algorithms in cuda language.
