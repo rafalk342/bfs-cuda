@@ -22,6 +22,7 @@ void bfsVertexCentric(int s, std::vector<Node> &Graph, std::vector<std::vector<i
                 Graph[v].visited = true;
                 Graph[v].distance = Graph[u].distance + 1;
                 Graph[v].parent = u;
+                Q.push(v);
             }
         }
     }
@@ -40,6 +41,7 @@ void bfsEdgeCentric(int s, std::vector<Node> &Graph, std::vector<std::vector<boo
                 Graph[v].visited = true;
                 Graph[v].distance = Graph[u].distance + 1;
                 Graph[v].parent = u;
+                Q.push(v);
             }
         }
     }
@@ -58,14 +60,14 @@ int main() {
     for (int i = 0; i < m; i++) {
         int u, v;
         std::cin >> u >> v;
-//        GraphAdjacency[u].push_back(v);
-//        GraphAdjacency[v].push_back(u);
-        GraphMatrix[u][v] = true;
-        GraphMatrix[v][u] = true;
+        GraphAdjacency[u].push_back(v);
+        GraphAdjacency[v].push_back(u);
+//        GraphMatrix[u][v] = true;
+//        GraphMatrix[v][u] = true;
     }
     // run bfsVertexCentric on it
-//    bfsVertexCentric(0, Graph, GraphAdjacency);
-    bfsEdgeCentric(0, Graph, GraphMatrix);
+    bfsVertexCentric(0, Graph, GraphAdjacency);
+//    bfsEdgeCentric(0, Graph, GraphMatrix);
     // keep information about execution time
 
     // output acquired results
