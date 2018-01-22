@@ -89,8 +89,9 @@ void scanDegrees(int size, int *d_degrees, int *incrDegrees) {
         //write initial values to shared memory
         __shared__ int prefixSum[1024];
         int modulo = threadIdx.x;
-
         prefixSum[modulo] = d_degrees[thid];
+        __syncthreads();
+
         //calculate scan on this block
         //go up
         for (int nodeSize = 2; nodeSize <= 1024; nodeSize <<= 1) {
@@ -122,7 +123,6 @@ void scanDegrees(int size, int *d_degrees, int *incrDegrees) {
             }
             __syncthreads();
         }
-
         d_degrees[thid] = prefixSum[modulo];
     }
 
@@ -133,6 +133,7 @@ void assignVerticesNextQueue(int *d_adjacencyList, int *d_edgesOffset, int *d_ed
                              int *d_currentQueue, int *d_nextQueue, int *d_degrees, int *incrDegrees,
                              int nextQueueSize) {
     int thid = blockIdx.x * blockDim.x + threadIdx.x;
+
     if (thid < queueSize) {
         __shared__ int sharedIncrement;
         if (!threadIdx.x) {
