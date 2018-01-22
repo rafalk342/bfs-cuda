@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <cstdio>
+#include <cstdlib>
 
 struct Graph {
     std::vector<int> adjacencyList; // all edges
@@ -12,6 +13,6 @@ struct Graph {
     int numEdges = 0;
 };
 
-void readGraph(Graph &G);
+void readGraph(Graph &G, int n, int m);
 
 #endif //BFS_CUDA_GRAPH_H
