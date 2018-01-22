@@ -1,2 +1,2 @@
 # cuda-bfs
-Implementation of bfsVertexCentric algorithms in cuda language.
+Implementation of breadth first search in CPU and CUDA.
