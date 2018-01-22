@@ -25,8 +25,14 @@ void checkError(CUresult error, std::string msg) {
 CUdevice cuDevice;
 CUcontext cuContext;
 CUmodule cuModule;
+
 CUfunction cuSimpleBfs;
 CUfunction cuQueueBfs;
+CUfunction cuNextLayer;
+CUfunction cuCountDegrees;
+CUfunction cuScanDegrees;
+CUfunction cuAssignVerticesNextQueue;
+
 CUdeviceptr d_adjacencyList;
 CUdeviceptr d_edgesOffset;
 CUdeviceptr d_edgesSize;
@@ -34,6 +40,8 @@ CUdeviceptr d_distance;
 CUdeviceptr d_parent;
 CUdeviceptr d_currentQueue;
 CUdeviceptr d_nextQueue;
+CUdeviceptr d_degrees;
+int *incrDegrees;
 
 void initCuda(Graph &G) {
     //initialize CUDA
@@ -43,6 +51,11 @@ void initCuda(Graph &G) {
     checkError(cuModuleLoad(&cuModule, "bfsCUDA.ptx"), "cannot load module");
     checkError(cuModuleGetFunction(&cuSimpleBfs, cuModule, "simpleBfs"), "cannot get kernel handle");
     checkError(cuModuleGetFunction(&cuQueueBfs, cuModule, "queueBfs"), "cannot get kernel handle");
+    checkError(cuModuleGetFunction(&cuNextLayer, cuModule, "nextLayer"), "cannot get kernel handle");
+    checkError(cuModuleGetFunction(&cuCountDegrees, cuModule, "countDegrees"), "cannot get kernel handle");
+    checkError(cuModuleGetFunction(&cuScanDegrees, cuModule, "scanDegrees"), "cannot get kernel handle");
+    checkError(cuModuleGetFunction(&cuAssignVerticesNextQueue, cuModule, "assignVerticesNextQueue"),
+               "cannot get kernel handle");
 
     //copy memory to device
     checkError(cuMemAlloc(&d_adjacencyList, G.numEdges * sizeof(int)), "cannot allocate d_adjacencyList");
@@ -52,6 +65,8 @@ void initCuda(Graph &G) {
     checkError(cuMemAlloc(&d_parent, G.numVertices * sizeof(int)), "cannot allocate d_parent");
     checkError(cuMemAlloc(&d_currentQueue, G.numVertices * sizeof(int)), "cannot allocate d_currentQueue");
     checkError(cuMemAlloc(&d_nextQueue, G.numVertices * sizeof(int)), "cannot allocate d_nextQueue");
+    checkError(cuMemAlloc(&d_degrees, G.numVertices * sizeof(int)), "cannot allocate d_degrees");
+    checkError(cuMemAllocHost((void **) &incrDegrees, sizeof(int) * G.numVertices), "cannot allocate memory");
 
     checkError(cuMemcpyHtoD(d_adjacencyList, G.adjacencyList.data(), G.numEdges * sizeof(int)),
                "cannot copy to d_adjacencyList");
@@ -59,6 +74,7 @@ void initCuda(Graph &G) {
                "cannot copy to d_edgesOffset");
     checkError(cuMemcpyHtoD(d_edgesSize, G.edgesSize.data(), G.numVertices * sizeof(int)),
                "cannot copy to d_edgesSize");
+
 
 }
 
@@ -76,7 +92,7 @@ void finalizeCuda() {
 void checkOutput(std::vector<int> &distance, std::vector<int> &expectedDistance, Graph &G) {
     for (int i = 0; i < G.numVertices; i++) {
         if (distance[i] != expectedDistance[i]) {
-            printf("%d %d %d\n", i , distance[i], expectedDistance[i]);
+            printf("%d %d %d\n", i, distance[i], expectedDistance[i]);
             printf("Wrong output!\n");
             exit(1);
         }
@@ -121,8 +137,8 @@ void runCudaSimpleBfs(Graph &G, std::vector<int> &distance,
     int level = 0;
     while (*changed) {
         *changed = 0;
-        void *args[8] = {&G.numVertices, &level, &d_adjacencyList, &d_edgesOffset, &d_edgesSize, &d_distance, &d_parent,
-                         &changed};
+        void *args[] = {&G.numVertices, &level, &d_adjacencyList, &d_edgesOffset, &d_edgesSize, &d_distance, &d_parent,
+                        &changed};
         checkError(cuLaunchKernel(cuSimpleBfs, G.numVertices / 1024 + 1, 1, 1,
                                   1024, 1, 1, 0, 0, args, 0),
                    "cannot run kernel simpleBfs");
@@ -156,11 +172,10 @@ void runCudaQueueBfs(Graph &G, std::vector<int> &distance,
     *nextQueueSize = 0;
     int level = 0;
     while (queueSize) {
-        void *args[10] = {&level, &d_adjacencyList, &d_edgesOffset, &d_edgesSize, &d_distance, &d_parent, &queueSize,
-                          &nextQueueSize, &d_currentQueue, &d_nextQueue};
-        int blockSize = std::min(1024, queueSize);
+        void *args[] = {&level, &d_adjacencyList, &d_edgesOffset, &d_edgesSize, &d_distance, &d_parent, &queueSize,
+                        &nextQueueSize, &d_currentQueue, &d_nextQueue};
         checkError(cuLaunchKernel(cuQueueBfs, queueSize / 1024 + 1, 1, 1,
-                                  blockSize, 1, 1, 0, 0, args, 0),
+                                  1024, 1, 1, 0, 0, args, 0),
                    "cannot run kernel queueBfs");
         cuCtxSynchronize();
         level++;
@@ -177,7 +192,88 @@ void runCudaQueueBfs(Graph &G, std::vector<int> &distance,
     finalizeCudaBfs(distance, parent, G);
 }
 
-int main(int argc, char** argv) {
+void nextLayer(int level, int queueSize) {
+    void *args[] = {&level, &d_adjacencyList, &d_edgesOffset, &d_edgesSize, &d_distance, &d_parent, &queueSize,
+                    &d_currentQueue};
+    checkError(cuLaunchKernel(cuNextLayer, queueSize / 1024 + 1, 1, 1,
+                              1024, 1, 1, 0, 0, args, 0),
+               "cannot run kernel cuNextLayer");
+    cuCtxSynchronize();
+}
+
+void countDegrees(int level, int queueSize) {
+    void *args[] = {&d_adjacencyList, &d_edgesOffset, &d_edgesSize, &d_parent, &queueSize,
+                    &d_currentQueue, &d_degrees};
+    checkError(cuLaunchKernel(cuCountDegrees, queueSize / 1024 + 1, 1, 1,
+                              1024, 1, 1, 0, 0, args, 0),
+               "cannot run kernel cuNextLayer");
+    cuCtxSynchronize();
+}
+
+void scanDegrees(int queueSize) {
+    //run kernel so every block in d_currentQueue has prefix sums calculated
+    void *args[] = {&queueSize, &d_degrees, &incrDegrees};
+    checkError(cuLaunchKernel(cuScanDegrees, queueSize / 1024 + 1, 1, 1,
+                              1024, 1, 1, 0, 0, args, 0), "cannot run kernel scanDegrees");
+    cuCtxSynchronize();
+
+    //count prefix sums on CPU for ends of blocks exclusive
+    //already written previous block sum
+    incrDegrees[0] = 0;
+    for (int i = 1024; i < queueSize; i += 1024) {
+        incrDegrees[i / 1024] += incrDegrees[i / 1024 - 1];
+    }
+}
+
+void assignVerticesNextQueue(int queueSize, int nextQueueSize) {
+    void *args[] = {&d_adjacencyList, &d_edgesOffset, &d_edgesSize, &d_parent, &queueSize, &d_currentQueue,
+                    &d_nextQueue, &d_degrees, &incrDegrees, &nextQueueSize};
+    checkError(cuLaunchKernel(cuAssignVerticesNextQueue, queueSize / 1024 + 1, 1, 1,
+                              1024, 1, 1, 0, 0, args, 0),
+               "cannot run kernel assignVerticesNextQueue");
+    cuCtxSynchronize();
+}
+
+void runCudaScanBfs(Graph &G, std::vector<int> &distance,
+                    std::vector<int> &parent) {
+    initializeCudaBfs(distance, parent, G);
+
+    //launch kernel
+    printf("Starting scan parallel bfs.\n");
+    auto start = std::chrono::steady_clock::now();
+
+    int firstElementQueue = 0;
+    cuMemcpyHtoD(d_currentQueue, &firstElementQueue, sizeof(int));
+
+    int queueSize = 1;
+    int nextQueueSize = 0;
+    int level = 0;
+    while (queueSize) {
+        // next layer phase
+        nextLayer(level, queueSize);
+        // counting degrees phase
+        countDegrees(level, queueSize);
+        // doing scan on degrees
+        scanDegrees(queueSize);
+        nextQueueSize = incrDegrees[(queueSize - 1) / 1024] + incrDegrees[(queueSize - 1) / 1024 + 1];
+        // assigning vertices to nextQueue
+        assignVerticesNextQueue(queueSize, nextQueueSize);
+
+        level++;
+        queueSize = nextQueueSize;
+        nextQueueSize = 0;
+        std::swap(d_currentQueue, d_nextQueue);
+    }
+
+
+    auto end = std::chrono::steady_clock::now();
+    long duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    printf("Elapsed time in milliseconds : %li ms.\n", duration);
+
+    finalizeCudaBfs(distance, parent, G);
+}
+
+int main(int argc, char **argv) {
     int n = atoi(argv[1]);
     int m = atoi(argv[2]);
     // read graph from standard input
@@ -206,6 +302,10 @@ int main(int argc, char** argv) {
 
     //run CUDA queue parallel bfs
     runCudaQueueBfs(G, distance, parent);
+    checkOutput(distance, expectedDistance, G);
+
+    //run CUDA scan parallel bfs
+    runCudaScanBfs(G, distance, parent);
     checkOutput(distance, expectedDistance, G);
 
     finalizeCuda();
