@@ -13,6 +13,6 @@ struct Graph {
     int numEdges = 0;
 };
 
-void readGraph(Graph &G, int n, int m);
+void readGraph(Graph &G, int argc, char **argv);
 
 #endif //BFS_CUDA_GRAPH_H

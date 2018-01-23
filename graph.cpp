@@ -1,15 +1,32 @@
+#include <ctime>
 #include "graph.h"
 
-void readGraph(Graph &G, int n, int m) {
-    srand(12345);
+void readGraph(Graph &G, int argc, char **argv) {
+    int n;
+    int m;
 
+    //If no arguments then read graph from stdin
+    bool fromStdin = argc == 1;
+    if (fromStdin) {
+        scanf("%d %d", &n, &m);
+    } else {
+        srand(12345);
+        n = atoi(argv[1]);
+        m = atoi(argv[2]);
+    }
 
     std::vector<std::vector<int> > adjecancyLists(n);
     for (int i = 0; i < m; i++) {
-        int u = rand() % n;
-        int v = rand() % n;
-        adjecancyLists[u].push_back(v);
-        adjecancyLists[v].push_back(u);
+        int u, v;
+        if (fromStdin) {
+            scanf("%d %d", &u, &v);
+            adjecancyLists[u].push_back(v);
+        } else {
+            u = rand() % n;
+            v = rand() % n;
+            adjecancyLists[u].push_back(v);
+            adjecancyLists[v].push_back(u);
+        }
     }
 
     for (int i = 0; i < n; i++) {
@@ -19,6 +36,7 @@ void readGraph(Graph &G, int n, int m) {
             G.adjacencyList.push_back(edge);
         }
     }
+
     G.numVertices = n;
     G.numEdges = G.adjacencyList.size();
 }
