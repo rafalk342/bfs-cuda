@@ -6,13 +6,13 @@ void readGraph(Graph &G, int argc, char **argv) {
     int m;
 
     //If no arguments then read graph from stdin
-    bool fromStdin = argc == 1;
+    bool fromStdin = argc <= 2;
     if (fromStdin) {
         scanf("%d %d", &n, &m);
     } else {
         srand(12345);
-        n = atoi(argv[1]);
-        m = atoi(argv[2]);
+        n = atoi(argv[2]);
+        m = atoi(argv[3]);
     }
 
     std::vector<std::vector<int> > adjecancyLists(n);

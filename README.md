@@ -15,10 +15,10 @@ To build the project run:
 make
 
 To run algorithms on random generated graphs:
-./main <number of vertices> <number of edges>
+./main <start vertex> <number of vertices> <number of edges>
 
 To run algorithm on graphs from standard input:
-./main < input
+./main <start vertex> < input
 Input should be in the form:
 <number of vertices> <number of edges>
 <end of edge1> <end of edge1>

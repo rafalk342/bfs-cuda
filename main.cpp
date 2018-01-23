@@ -5,11 +5,11 @@
 #include "graph.h"
 #include "bfsCPU.h"
 
-void runCpu(Graph &G, std::vector<int> &distance,
+void runCpu(int startVertex, Graph &G, std::vector<int> &distance,
             std::vector<int> &parent, std::vector<bool> &visited) {
     printf("Starting sequential bfs.\n");
     auto start = std::chrono::steady_clock::now();
-    bfsCPU(0, G, distance, parent, visited);
+    bfsCPU(startVertex, G, distance, parent, visited);
     auto end = std::chrono::steady_clock::now();
     long duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     printf("Elapsed time in milliseconds : %li ms.\n\n", duration);
@@ -87,6 +87,7 @@ void finalizeCuda() {
     checkError(cuMemFree(d_parent), "cannot free memory for d_parent");
     checkError(cuMemFree(d_currentQueue), "cannot free memory for d_parent");
     checkError(cuMemFree(d_nextQueue), "cannot free memory for d_parent");
+    checkError(cuMemFreeHost(incrDegrees), "cannot free memory for incrDegrees");
 }
 
 void checkOutput(std::vector<int> &distance, std::vector<int> &expectedDistance, Graph &G) {
@@ -101,17 +102,20 @@ void checkOutput(std::vector<int> &distance, std::vector<int> &expectedDistance,
     printf("Output OK!\n\n");
 }
 
-void initializeCudaBfs(std::vector<int> &distance, std::vector<int> &parent, Graph &G) {
+void initializeCudaBfs(int startVertex, std::vector<int> &distance, std::vector<int> &parent, Graph &G) {
     //initialize values
     std::fill(distance.begin(), distance.end(), std::numeric_limits<int>::max());
     std::fill(parent.begin(), parent.end(), std::numeric_limits<int>::max());
-    distance[0] = 0;
-    parent[0] = 0;
+    distance[startVertex] = 0;
+    parent[startVertex] = 0;
 
     checkError(cuMemcpyHtoD(d_distance, distance.data(), G.numVertices * sizeof(int)),
                "cannot copy to d)distance");
     checkError(cuMemcpyHtoD(d_parent, parent.data(), G.numVertices * sizeof(int)),
                "cannot copy to d_parent");
+
+    int firstElementQueue = startVertex;
+    cuMemcpyHtoD(d_currentQueue, &firstElementQueue, sizeof(int));
 }
 
 void finalizeCudaBfs(std::vector<int> &distance, std::vector<int> &parent, Graph &G) {
@@ -122,9 +126,9 @@ void finalizeCudaBfs(std::vector<int> &distance, std::vector<int> &parent, Graph
 
 }
 
-void runCudaSimpleBfs(Graph &G, std::vector<int> &distance,
+void runCudaSimpleBfs(int startVertex, Graph &G, std::vector<int> &distance,
                       std::vector<int> &parent) {
-    initializeCudaBfs(distance, parent, G);
+    initializeCudaBfs(startVertex, distance, parent, G);
 
     int *changed;
     checkError(cuMemAllocHost((void **) &changed, sizeof(int)), "cannot allocate changed");
@@ -154,9 +158,9 @@ void runCudaSimpleBfs(Graph &G, std::vector<int> &distance,
     finalizeCudaBfs(distance, parent, G);
 }
 
-void runCudaQueueBfs(Graph &G, std::vector<int> &distance,
+void runCudaQueueBfs(int startVertex, Graph &G, std::vector<int> &distance,
                      std::vector<int> &parent) {
-    initializeCudaBfs(distance, parent, G);
+    initializeCudaBfs(startVertex, distance, parent, G);
 
     int *nextQueueSize;
     checkError(cuMemAllocHost((void **) &nextQueueSize, sizeof(int)), "cannot allocate nextQueueSize");
@@ -164,9 +168,6 @@ void runCudaQueueBfs(Graph &G, std::vector<int> &distance,
     //launch kernel
     printf("Starting queue parallel bfs.\n");
     auto start = std::chrono::steady_clock::now();
-
-    int firstElementQueue = 0;
-    cuMemcpyHtoD(d_currentQueue, &firstElementQueue, sizeof(int));
 
     int queueSize = 1;
     *nextQueueSize = 0;
@@ -234,16 +235,13 @@ void assignVerticesNextQueue(int queueSize, int nextQueueSize) {
     cuCtxSynchronize();
 }
 
-void runCudaScanBfs(Graph &G, std::vector<int> &distance,
+void runCudaScanBfs(int startVertex, Graph &G, std::vector<int> &distance,
                     std::vector<int> &parent) {
-    initializeCudaBfs(distance, parent, G);
+    initializeCudaBfs(startVertex, distance, parent, G);
 
     //launch kernel
     printf("Starting scan parallel bfs.\n");
     auto start = std::chrono::steady_clock::now();
-
-    int firstElementQueue = 0;
-    cuMemcpyHtoD(d_currentQueue, &firstElementQueue, sizeof(int));
 
     int queueSize = 1;
     int nextQueueSize = 0;
@@ -261,7 +259,6 @@ void runCudaScanBfs(Graph &G, std::vector<int> &distance,
 
         level++;
         queueSize = nextQueueSize;
-        nextQueueSize = 0;
         std::swap(d_currentQueue, d_nextQueue);
     }
 
@@ -277,6 +274,7 @@ int main(int argc, char **argv) {
 
     // read graph from standard input
     Graph G;
+    int startVertex = atoi(argv[1]);
     readGraph(G, argc, argv);
 
     printf("Number of vertices %d\n", G.numVertices);
@@ -288,7 +286,7 @@ int main(int argc, char **argv) {
     std::vector<bool> visited(G.numVertices, false);
 
     //run CPU sequential bfs
-    runCpu(G, distance, parent, visited);
+    runCpu(startVertex, G, distance, parent, visited);
 
     //save results from sequential bfs
     std::vector<int> expectedDistance(distance);
@@ -296,15 +294,15 @@ int main(int argc, char **argv) {
 
     initCuda(G);
     //run CUDA simple parallel bfs
-    runCudaSimpleBfs(G, distance, parent);
+    runCudaSimpleBfs(startVertex, G, distance, parent);
     checkOutput(distance, expectedDistance, G);
 
     //run CUDA queue parallel bfs
-    runCudaQueueBfs(G, distance, parent);
+    runCudaQueueBfs(startVertex, G, distance, parent);
     checkOutput(distance, expectedDistance, G);
 
     //run CUDA scan parallel bfs
-    runCudaScanBfs(G, distance, parent);
+    runCudaScanBfs(startVertex, G, distance, parent);
     checkOutput(distance, expectedDistance, G);
 
     finalizeCuda();
