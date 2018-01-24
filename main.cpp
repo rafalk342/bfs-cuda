@@ -46,7 +46,7 @@ int *incrDegrees;
 void initCuda(Graph &G) {
     //initialize CUDA
     cuInit(0);
-    checkError(cuDeviceGet(&cuDevice, 0), "cannot get device 0");
+    checkError(cuDeviceGet(&cuDevice, 1), "cannot get device 0");
     checkError(cuCtxCreate(&cuContext, 0, cuDevice), "cannot create context");
     checkError(cuModuleLoad(&cuModule, "bfsCUDA.ptx"), "cannot load module");
     checkError(cuModuleGetFunction(&cuSimpleBfs, cuModule, "simpleBfs"), "cannot get kernel handle");
@@ -221,7 +221,7 @@ void scanDegrees(int queueSize) {
     //count prefix sums on CPU for ends of blocks exclusive
     //already written previous block sum
     incrDegrees[0] = 0;
-    for (int i = 1024; i < queueSize; i += 1024) {
+    for (int i = 1024; i < queueSize + 1024; i += 1024) {
         incrDegrees[i / 1024] += incrDegrees[i / 1024 - 1];
     }
 }
@@ -253,7 +253,7 @@ void runCudaScanBfs(int startVertex, Graph &G, std::vector<int> &distance,
         countDegrees(level, queueSize);
         // doing scan on degrees
         scanDegrees(queueSize);
-        nextQueueSize = incrDegrees[(queueSize - 1) / 1024] + incrDegrees[(queueSize - 1) / 1024 + 1];
+        nextQueueSize = incrDegrees[(queueSize - 1) / 1024 + 1];
         // assigning vertices to nextQueue
         assignVerticesNextQueue(queueSize, nextQueueSize);
 

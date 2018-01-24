@@ -73,7 +73,7 @@ void countDegrees(int *d_adjacencyList, int *d_edgesOffset, int *d_edgesSize, in
         int degree = 0;
         for (int i = d_edgesOffset[u]; i < d_edgesOffset[u] + d_edgesSize[u]; i++) {
             int v = d_adjacencyList[i];
-            if (d_parent[v] == i) {
+            if (d_parent[v] == i && v != u) {
                 ++degree;
             }
         }
@@ -150,7 +150,7 @@ void assignVerticesNextQueue(int *d_adjacencyList, int *d_edgesOffset, int *d_ed
         int counter = 0;
         for (int i = d_edgesOffset[u]; i < d_edgesOffset[u] + d_edgesSize[u]; i++) {
             int v = d_adjacencyList[i];
-            if (d_parent[v] == i) {
+            if (d_parent[v] == i && v != u) {
                 int nextQueuePlace = sharedIncrement + sum + counter;
                 d_nextQueue[nextQueuePlace] = v;
                 counter++;
